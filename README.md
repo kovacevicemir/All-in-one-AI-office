@@ -124,7 +124,7 @@ Pressure thresholds are per-model: a 1M-token model wants very different numbers
 128K one. Credentials are read at launch and are **never** written to the data
 directory or returned over the API — a test asserts that.
 
-## 🏗️ How it works
+## 🏗 How it works
 
 ```
 ┌──────────────┐   HTTP + WebSocket (packages/contracts)   ┌────────────────────┐
@@ -224,7 +224,7 @@ keyboard-focus a marker for the summary (`Ada → Grace`, the ask, the task, the
 the time). All three render from one pure `describeCommunication`, so they can never
 disagree.
 
-## 🛠️ Development
+## 🛠 Development
 
 The rules are written down and mostly enforced: see
 [`docs/engineering-guidelines.md`](docs/engineering-guidelines.md) and the short
@@ -245,7 +245,7 @@ openspec validate add-ai-office-mvp --strict             # must be clean before 
 Hard rule: **no behaviour change without a spec change.** If the code and the spec
 disagree, the spec wins — or the spec is updated deliberately in the same change.
 
-## 🗺️ Status and roadmap
+## 🗺 Status and roadmap
 
 This is an **MVP**: the specs above are implemented and verified. Known gaps, tracked
 in [`tasks.md`](openspec/changes/add-ai-office-mvp/tasks.md#notes-and-deviations):
