@@ -116,6 +116,29 @@ The payoff is visible in this repo: the entire office — dependency graphs, con
 pressure, run lifecycle, realtime events — is exercised in **under 2 seconds** with
 no browser, no PI install, and no API key.
 
+### Test speed budget
+
+Tests are split into named groups in
+[`scripts/test-groups.ts`](../scripts/test-groups.ts). **Every group finishes in under
+30 seconds** — a group that outgrows the budget gets split, not tolerated. The
+absolute ceiling for any single test or runner step is **40 seconds**; nothing may
+declare a longer timeout.
+
+| Command | Use |
+|---|---|
+| `npm test` | Every group, timed by `scripts/run-test-groups.ts`; fails when a group overruns. |
+| `npm run test:changed` | Only the groups a working-tree change can reach, following §4. Use this while implementing. |
+| `npm run test:group -- <name>` | One named group. |
+| `npm run test:list` | The groups and the current budget. |
+
+The [code-health gate](../test/code-health.test.ts) also fails on any timeout above 40
+seconds, so the ceiling is machine-checked. Keep test counts honest: put a new test in
+the smallest group that covers it, and do not let it push that group past 30 seconds.
+
+The browser suite is grouped by spec for the same reason: run one at a time with
+`npm run e2e:office`, `npm run e2e:office-2d`, or `npm run e2e:office-layout`. Each spec
+must stay under 30 seconds, and its per-test timeout is already 30 seconds.
+
 ---
 
 ## 4. Architecture rules
@@ -230,7 +253,10 @@ Rules for changes:
 
 | Command | Purpose |
 |---|---|
-| `npm test` | All tests, including the architecture and code-health gates. |
+| `npm test` | All groups through the budget-enforcing runner (each group < 30s). |
+| `npm run test:changed` | Only the groups the working-tree changes can reach. |
+| `npm run test:group -- <name>` | One named group from `scripts/test-groups.ts`. |
+| `npm run test:list` | List the groups and the per-group budget. |
 | `npm run typecheck` | `tsc --noEmit` across every workspace. |
 | `npm run dev` | Runtime + web dev servers. |
 | `npm run build` | Production build of the web app. |

@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { VoiceDictation } from '../voice/VoiceDictation.js';
 
 export interface AddTaskFormProps {
   agentName: string;
@@ -56,13 +57,22 @@ export function AddTaskForm({ agentName, busy = false, onCreateTask }: AddTaskFo
         <label className="sr-only" htmlFor="task-instruction">
           Task instruction
         </label>
-        <textarea
-          id="task-instruction"
-          rows={3}
-          value={instruction}
-          placeholder={`Sent to ${agentName} verbatim, exactly as you would type it in a terminal.`}
-          onChange={(event) => setInstruction(event.target.value)}
-        />
+        <div className="task-instruction">
+          <textarea
+            id="task-instruction"
+            rows={3}
+            value={instruction}
+            placeholder={`Sent to ${agentName} verbatim, exactly as you would type it in a terminal.`}
+            onChange={(event) => setInstruction(event.target.value)}
+          />
+          <VoiceDictation
+            label="task instruction"
+            fieldLabel="Dictated instruction"
+            busy={busy}
+            value={instruction}
+            onText={setInstruction}
+          />
+        </div>
         <button type="submit" disabled={busy}>
           Add to queue
         </button>

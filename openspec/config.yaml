@@ -19,6 +19,9 @@ context: |
     nesting <= 3, file <= 600 lines. Enforced by test/code-health.test.ts.
   - Anything important must be testable without a browser, network, clock, or
     credentials. If it is not, the design is wrong and the plan must change it.
+  - Tests are split into named groups (scripts/test-groups.ts). Every group finishes
+    in under 30 seconds and no timeout may exceed 40 seconds. Enforced by `npm test`
+    (scripts/run-test-groups.ts) and by test/code-health.test.ts.
   - Dependency direction is enforced: contracts <- core <- adapters <-
     apps/runtime, and apps/web -> contracts only. No vendor names in core,
     contracts, or web.
@@ -51,6 +54,10 @@ operations:
   apply:
     guidance:
       - Before editing code, read the spec requirement the task implements.
+      - Run only the relevant test group while implementing (`npm run test:changed`, or
+        `npm run test:group -- <name>` for the workspace you touched); run `npm test`
+        before ticking a group's final task. Never give a test command a timeout above
+        40 seconds.
       - Keep new functions inside the complexity budgets as you write them, not after.
       - Tick a task's checkbox only once its stated verification passes.
       - If implementing reveals a spec conflict or a wrong assumption, stop and fix the

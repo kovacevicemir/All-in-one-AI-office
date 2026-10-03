@@ -14,6 +14,9 @@ const environment: Record<string, string> = Object.fromEntries(
  */
 export default defineConfig({
   testDir: './e2e',
+  // The render check targets a separately running dev server; it is run by
+  // `npm run check:web` with playwright.dev.config.ts.
+  testIgnore: 'dev-render.spec.ts',
   fullyParallel: false,
   workers: 1,
   timeout: 30_000,
@@ -34,7 +37,7 @@ export default defineConfig({
       command: 'npx tsx e2e/runtime-server.ts',
       url: `${RUNTIME_URL}/api/health`,
       reuseExistingServer: false,
-      timeout: 60_000,
+      timeout: 40_000,
       env: environment,
     },
     {
@@ -42,8 +45,8 @@ export default defineConfig({
       cwd: 'apps/web',
       url: WEB_URL,
       reuseExistingServer: false,
-      timeout: 60_000,
-      env: { ...environment, VITE_RUNTIME_URL: RUNTIME_URL },
+      timeout: 40_000,
+      env: { ...environment, VITE_RUNTIME_URL: RUNTIME_URL, VITE_VOICE_FAKE: '1' },
     },
   ],
 });

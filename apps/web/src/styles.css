@@ -324,13 +324,59 @@ textarea:focus-visible {
 
 .prompt-input {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 8px;
 }
 
 .prompt-input p {
   grid-column: 1 / -1;
   margin: 0;
+}
+
+.voice-button.recording {
+  color: #fff;
+  background: #b3224a;
+  border-color: #b3224a;
+}
+
+/* --------------------------------------------------- voice confirm modal */
+
+.voice-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(6, 10, 20, 0.62);
+}
+
+.voice-modal {
+  display: grid;
+  gap: 10px;
+  width: min(460px, 100%);
+  padding: 18px;
+  border: 1px solid var(--line, #2a3550);
+  border-radius: 12px;
+  background: var(--panel, #141a2b);
+}
+
+.voice-modal h2 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.voice-modal textarea {
+  width: 100%;
+  resize: vertical;
+  font: inherit;
+}
+
+.voice-modal-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
 }
 
 /* --------------------------------------------------------- profile form */
@@ -485,6 +531,18 @@ textarea:focus-visible {
 
 .task-form textarea {
   min-height: 64px;
+}
+
+.task-instruction {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 8px;
+}
+
+.task-instruction p {
+  grid-column: 1 / -1;
+  margin: 0;
 }
 
 .task-form button {

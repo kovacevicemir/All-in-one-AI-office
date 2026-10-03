@@ -18,7 +18,7 @@ import { createRuntime } from '@ai-office/runtime';
  * the vendor rather than a double.
  *
  * Run it locally with:
- *   AI_OFFICE_REAL_SMOKE=1 DEEPSEEK_API_KEY=sk-... npm test
+ *   AI_OFFICE_REAL_SMOKE=1 DEEPSEEK_API_KEY=sk-... npm run test:group -- smoke
  */
 const ENABLED =
   process.env.AI_OFFICE_REAL_SMOKE === '1' &&
@@ -27,7 +27,8 @@ const ENABLED =
 const MODEL = { providerId: 'deepseek', modelId: 'deepseek-flash' } as const;
 const INSTRUCTION = 'Reply with exactly one word: pong. Do not use any tools.';
 const PI = process.env.PI_COMMAND ?? 'pi';
-const TIMEOUT_MS = 180_000;
+/** Hard cap for this opt-in group, matching `MAX_TEST_TIMEOUT_MS`. */
+const TIMEOUT_MS = 40_000;
 
 /** Total tokens the direct CLI run reports for a prompt. */
 interface Usage {

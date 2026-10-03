@@ -12,7 +12,7 @@ what it is waiting on — and to type into its real terminal.
 [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)](https://react.dev/)
 [![Three.js](https://img.shields.io/badge/Three.js-r186-000000?logo=three.js&logoColor=white)](https://threejs.org/)
 [![Node](https://img.shields.io/badge/Node-%E2%89%A522.6-5FA04E?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
-[![Tests](https://img.shields.io/badge/tests-339%20passing-3fb950?logo=vitest&logoColor=white)](#-development)
+[![Tests](https://img.shields.io/badge/tests-419%20passing-3fb950?logo=vitest&logoColor=white)](#-development)
 [![Spec-driven](https://img.shields.io/badge/spec--driven-OpenSpec-8b5cf6)](openspec)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
@@ -40,7 +40,7 @@ profile, queue, and the live run. Drag bots around; the layout is remembered.*
    │ Waiting on   —                                                     │
    │ $ pi --mode rpc …                                                  │
    │ $ pnpm test                                                        │
-   │   ✔ 339 passing                                                    │
+   │   ✔ 419 passing                                                    │
    └────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -64,6 +64,7 @@ the model are pluggable ports, so swapping vendors never touches the domain or t
 | 😣 **Context pressure moods** | Bots *complain* at 30% context and *stress* at 50% (configurable) — advisory only, never kills a run. |
 | 💻 **Real terminal sessions** | One session per task, PTY- or RPC-backed: streaming output, input, scrollback backfill, exit codes. |
 | 📨 **Prompt a working agent** | Type into the inspector and the prompt reaches the harness with its own steering semantics. |
+| 🎙️ **Prompt by voice** | Speak a prompt; it is transcribed **on your machine**, cleaned of filler words, and held in a review modal until you say *confirm* or send it by hand. |
 | 🔗 **Dependencies + parallelism** | Tasks can depend on tasks across agents; independent work runs concurrently, dependents unblock automatically. |
 | 🧩 **Vendor-neutral** | Adding a harness or model is one adapter package plus one registry line — never a core, API, or UI change. |
 | 🪄 **Replaceable bots** | Point `avatars/manifest.json` at a glTF; with no assets, a built-in procedural bot renders. |
@@ -106,6 +107,7 @@ npm run test:group -- core   # one group
 npm run test:list  # groups and the budget
 npm run typecheck  # tsc --noEmit, whole repo
 npm run e2e        # Playwright browser suite (fake adapter)
+npm run check:web  # fail fast if the running dev server renders blank (needs `npm run dev`)
 npm run build      # production build of the web app
 ```
 
@@ -214,6 +216,39 @@ delivered to the harness as a separate system message (max 20,000 characters). W
 profile, a run is exactly a shell run — the task instruction reaches the harness
 byte-for-byte, with no added system prompt and no extra model calls.
 
+## 🎙 Voice prompting
+
+Prompt an agent by speaking instead of typing. A microphone sits next to the prompt box
+and next to the **Queue a task** instruction field; the task form's works even when no
+agent is running.
+
+1. **Speak** — click **Voice** and talk. Recognized text appears **in the field as you
+   speak** (streamed), with filler words (`um`, `uh`, `er`, `erm`, `hmm`, `mhh`, `aa`,
+   `äh`, …) removed, spacing and punctuation tidied, and the first letter capitalized.
+   Click **Stop** when you are done. Dictation appends to any text already in the field.
+2. **Commit** — the microphone never sends anything. Press **Send** (prompt box) or
+   **Add to queue** (task form) when the text is right. Edit it first if you like.
+
+**Where the speech comes from.** By default it uses the browser's own streaming speech
+engine (the Web Speech API) — no model, no download, no key, text while you talk. That
+engine (in Chromium) may send the audio to the browser vendor's service. On browsers
+without it, voice falls back to a **fully on-device Whisper model** (Transformers.js in
+a Web Worker): record, then review the cleaned transcript in a modal that fills the
+field. Either way audio is never written to disk, and the first use downloads and caches
+the model (tens of MB) so later runs work offline.
+
+Voice degrades to plain text whenever it cannot work: an unsupported browser or denied
+microphone permission disables the microphone with a reason, and typing keeps working.
+
+Tuning lives in `apps/web/src/voice/clean.ts`: change `DEFAULT_FILLER_WORDS` to adjust
+the disfluency list.
+
+The on-device fallback model is exercised by an opt-in smoke test over a checked-in clip:
+
+```bash
+AI_OFFICE_VOICE_SMOKE=1 npm run test:group -- voice-smoke
+```
+
 ## 📨 Inter-agent communication
 
 Two agents exchanging work are drawn as a communication, **derived** from interactions
@@ -287,6 +322,22 @@ Tests are split into named groups (`scripts/test-groups.ts`). Each group must fi
 under 30 seconds and no timeout may exceed 40 seconds; the `npm test` runner times every
 group and fails an overrun. While implementing, run `npm run test:changed` (or one group
 with `npm run test:group -- <name>`); run `npm test` before considering the work done.
+
+### When the dev page goes white
+
+A stale dev server can start serving an empty module transform (usually after a
+dependency change or a save the Windows file watcher missed) and the browser shows a
+blank page with an error like *“does not provide an export named …”*. With `npm run
+dev` already running, check it in about a second:
+
+```bash
+npm run check:web
+```
+
+It opens the running dev server, collects uncaught and console errors, and asserts the
+app actually mounted. If it fails, restart the dev server (`Ctrl-C`, then `npm run
+dev`) — that always clears it. The web dev server polls for file changes on Windows
+(`apps/web/vite.config.ts`) so this stale state is far less likely in the first place.
 
 Behaviour changes start as a spec change:
 

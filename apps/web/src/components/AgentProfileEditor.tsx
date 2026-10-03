@@ -58,34 +58,53 @@ export function AgentProfileEditor({ agentId, profile, onLoad, onSave }: AgentPr
     <section aria-label="Agent profile">
       <h3>Profile</h3>
       <form className="profile-form" onSubmit={(event) => void submit(event)}>
-        <label htmlFor="profile-description">Description</label>
-        <input
-          id="profile-description"
-          type="text"
-          value={description}
-          maxLength={AGENT_PROFILE_MAX_DESCRIPTION}
-          onChange={(event) => setDescription(event.target.value)}
-        />
+        <div className="field">
+          <div className="field-head">
+            <label htmlFor="profile-description">Description</label>
+            <span className="counter" aria-hidden="true">
+              {description.length} / {AGENT_PROFILE_MAX_DESCRIPTION}
+            </span>
+          </div>
+          <input
+            id="profile-description"
+            type="text"
+            value={description}
+            maxLength={AGENT_PROFILE_MAX_DESCRIPTION}
+            placeholder="Tech lead for the payments squad"
+            onChange={(event) => setDescription(event.target.value)}
+          />
+          <p className="hint">Shown in the office. The model never sees it.</p>
+        </div>
 
-        <label htmlFor="profile-instructions">Instructions</label>
-        <textarea
-          id="profile-instructions"
-          rows={6}
-          value={instructions}
-          maxLength={AGENT_PROFILE_MAX_INSTRUCTIONS}
-          onChange={(event) => setInstructions(event.target.value)}
-        />
+        <div className="field">
+          <div className="field-head">
+            <label htmlFor="profile-instructions">Instructions</label>
+            <span className="counter" aria-hidden="true">
+              {instructions.length} / {AGENT_PROFILE_MAX_INSTRUCTIONS}
+            </span>
+          </div>
+          <textarea
+            id="profile-instructions"
+            rows={6}
+            value={instructions}
+            maxLength={AGENT_PROFILE_MAX_INSTRUCTIONS}
+            placeholder="You are the tech lead. Own the build and the release checklist."
+            onChange={(event) => setInstructions(event.target.value)}
+          />
+          <p className="hint">Sent to the harness as a system message on every run.</p>
+        </div>
 
-        <button type="submit" disabled={saving}>
-          {saving ? 'Saving…' : 'Save profile'}
-        </button>
+        <div className="profile-footer">
+          <button type="submit" disabled={saving}>
+            {saving ? 'Saving…' : 'Save profile'}
+          </button>
+          {saved ? (
+            <p className="profile-status" role="status" data-testid="profile-saved">
+              Profile saved
+            </p>
+          ) : null}
+        </div>
       </form>
-
-      {saved ? (
-        <p className="muted small" role="status" data-testid="profile-saved">
-          Profile saved
-        </p>
-      ) : null}
       {error !== null ? (
         <p className="notice error" role="alert" data-testid="profile-error">
           {error}

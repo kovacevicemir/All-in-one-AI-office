@@ -2,6 +2,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { ABSOLUTE_TIMEOUT_MS, MAX_TEST_TIMEOUT_MS, TEST_BUDGET_MS } from '../scripts/test-groups.js';
 
 /**
  * Dependency-free enforcement of the numeric budgets in
@@ -167,6 +168,25 @@ export function scan(file: string, source: string): ScanResult {
   };
 }
 
+/**
+ * Timeout assignments above the given cap. Matches `timeout: 60_000`,
+ * `TIMEOUT_MS = 180_000`, and `timeoutMs = 3_000`; the cap itself is allowed.
+ */
+export function findOversizedTimeouts(source: string, maxMs: number = MAX_TEST_TIMEOUT_MS): string[] {
+  const problems: string[] = [];
+  const codeLines = stripNonCode(source).split('\n');
+  const rawLines = source.split('\n');
+  codeLines.forEach((line, index) => {
+    for (const match of line.matchAll(/(\w*timeout\w*)\s*[:=]\s*(\d[\d_]*)/gi)) {
+      const ms = Number((match[2] ?? '').replace(/_/g, ''));
+      if (ms > maxMs) {
+        problems.push(`${index + 1}: ${rawLines[index]?.trim() ?? ''} (${ms}ms)`);
+      }
+    }
+  });
+  return problems;
+}
+
 async function collectSources(): Promise<{ sources: string[]; testFiles: string[] }> {
   const sources: string[] = [];
   const testFiles: string[] = [];
@@ -271,5 +291,53 @@ describe('code health budgets', () => {
     const present = new Set(sources.map((file) => relative(root, file).replace(/\\/g, '/')));
     const stale = Object.keys(LARGE_FILE_EXCEPTIONS).filter((file) => !present.has(file));
     expect(stale, `\nstale exceptions to delete: ${stale.join(', ')}\n`).toEqual([]);
+  });
+
+  it('keeps every test group and timeout inside the speed budget', async () => {
+    expect(TEST_BUDGET_MS).toBeLessThanOrEqual(30_000);
+    expect(MAX_TEST_TIMEOUT_MS).toBeLessThanOrEqual(40_000);
+
+    const { testFiles } = await collectSources();
+    const e2eFiles = (await readdir(join(root, 'e2e'), { recursive: true }))
+      .filter((entry) => /\.ts$/.test(entry))
+      .map((entry) => join(root, 'e2e', entry));
+    const configs = [join(root, 'vitest.config.ts'), join(root, 'playwright.config.ts')];
+    const problems: string[] = [];
+
+    for (const file of [...testFiles, ...e2eFiles, ...configs]) {
+      const result = findOversizedTimeouts(await readFile(file, 'utf8'));
+      for (const hit of result) problems.push(`${relative(root, file)}:${hit}`);
+    }
+
+    expect(problems, `\n${problems.join('\n')}\n`).toEqual([]);
+  });
+
+  it('never declares a timeout above the 60s absolute cap anywhere in the repo', async () => {
+    expect(ABSOLUTE_TIMEOUT_MS).toBeLessThanOrEqual(60_000);
+    const { sources, testFiles } = await collectSources();
+    const files = new Set<string>([...sources, ...testFiles]);
+
+    for (const dir of ['e2e', 'scripts']) {
+      const entries = await readdir(join(root, dir), { recursive: true }).catch(() => [] as string[]);
+      for (const entry of entries) {
+        if (/\.(ts|tsx|mjs|js)$/.test(entry)) files.add(join(root, dir, entry));
+      }
+    }
+    for (const entry of await readdir(root)) {
+      if (/\.(ts|mjs|js)$/.test(entry)) files.add(join(root, entry));
+    }
+    for (const app of await readdir(join(root, 'apps'))) {
+      for (const entry of await readdir(join(root, 'apps', app))) {
+        if (/\.(ts|mjs|js)$/.test(entry)) files.add(join(root, 'apps', app, entry));
+      }
+    }
+
+    const problems: string[] = [];
+    for (const file of files) {
+      for (const hit of findOversizedTimeouts(await readFile(file, 'utf8'), ABSOLUTE_TIMEOUT_MS)) {
+        problems.push(`${relative(root, file)}:${hit}`);
+      }
+    }
+    expect(problems, `\ntimeouts above ${ABSOLUTE_TIMEOUT_MS}ms:\n${problems.join('\n')}\n`).toEqual([]);
   });
 });

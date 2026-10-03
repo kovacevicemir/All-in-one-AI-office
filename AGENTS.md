@@ -18,7 +18,7 @@ React for UI, vendor-neutral by design.
 3. `openspec/changes/add-ai-office-mvp/` — the baseline change: `proposal.md`,
    `design.md`, `tasks.md`, and the five capability specs.
 
-## Two rules that are not negotiable
+## Three rules that are not negotiable
 
 **1. Spec-driven development.** No behaviour change without a spec change.
 
@@ -45,6 +45,24 @@ out immediately.
   the design is wrong. Inject it through a port.
 - No `any`, no unexplained `@ts-ignore`.
 
+**3. Test speed budgets.** Every named test group finishes in under 30 seconds, and no
+single timeout may exceed 40 seconds. The groups live in `scripts/test-groups.ts`; the
+`npm test` runner times each one and fails when a group overruns. Keep groups small;
+split rather than tolerate a slow one, and never pass a test command a timeout longer
+than 40 seconds.
+
+## Timeouts — hard cap
+
+**Never pass a timeout longer than 60 seconds to any command.** Not 120, not 180, not
+"it might be slow". A command that has not finished in 60s is hung: stop it, report it,
+and change the approach. Prefer 5–30s for anything that should be quick. The only way
+to exceed 60s is a single, explicit instruction from the user for that one command —
+and then only for that command.
+
+This is machine-checked at project level: `test/code-health.test.ts` fails if any file
+in the repo declares a timeout above `ABSOLUTE_TIMEOUT_MS` (60s, in
+`scripts/test-groups.ts`). Test timeouts are capped tighter still, at 40s.
+
 ## Architecture invariants (enforced by `test/architecture.test.ts`)
 
 ```
@@ -63,7 +81,10 @@ contracts ← core ← adapters ← apps/runtime
 
 ```bash
 npm install          # Node >= 22.6
-npm test             # unit + integration + architecture + code-health gates
+npm test             # every group, timed and budget-checked (< 30s each)
+npm run test:changed # only the groups your working-tree changes can reach
+npm run test:group -- core   # one group
+npm run test:list    # groups and the budget
 npm run typecheck
 npm run dev          # runtime on :4317, web on :5173
 ```
@@ -74,6 +95,8 @@ npm run dev          # runtime on :4317, web on :5173
 ## While working
 
 - Read the relevant spec before editing the code it governs.
+- While implementing, run `npm run test:changed` (or the one relevant group) instead of
+  the whole suite; run `npm test` before ticking the group's final task.
 - Prefer deleting code to adding it; reuse `packages/adapter-fake` for test doubles.
 - Keep new files under the budgets before you write them, not after.
 - If you must exceed a budget, add a documented, ceiling-capped exception to the
