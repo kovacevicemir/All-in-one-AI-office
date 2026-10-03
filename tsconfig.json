@@ -1,0 +1,28 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "paths": {
+      "@ai-office/contracts": ["./packages/contracts/src/index.ts"],
+      "@ai-office/core": ["./packages/core/src/index.ts"],
+      "@ai-office/adapter-fake": ["./packages/adapter-fake/src/index.ts"],
+      "@ai-office/adapter-store-file": ["./packages/adapter-store-file/src/index.ts"],
+      "@ai-office/adapter-session": ["./packages/adapter-session/src/index.ts"],
+      "@ai-office/adapter-pi": ["./packages/adapter-pi/src/index.ts"],
+      "@ai-office/runtime": ["./apps/runtime/src/index.ts"]
+    }
+  },
+  "include": [
+    "packages/*/src/**/*.ts",
+    "packages/*/test/**/*.ts",
+    "apps/*/src/**/*.ts",
+    "apps/*/src/**/*.tsx",
+    "apps/*/src/**/*.d.ts",
+    "apps/*/test/**/*.ts",
+    "apps/*/test/**/*.tsx",
+    "apps/*/vite.config.ts",
+    "test/**/*.ts",
+    "e2e/**/*.ts",
+    "playwright.config.ts",
+    "vitest.config.ts"
+  ]
+}

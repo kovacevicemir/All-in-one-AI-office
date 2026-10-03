@@ -1,0 +1,17 @@
+{
+  "name": "@ai-office/adapter-session",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "types": "./src/index.ts",
+  "dependencies": {
+    "@ai-office/contracts": "*",
+    "@ai-office/core": "*"
+  },
+  "optionalDependencies": {
+    "node-pty": "^1.1.0"
+  }
+}

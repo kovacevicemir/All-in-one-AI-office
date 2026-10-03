@@ -1,0 +1,64 @@
+schema: spec-driven
+
+context: |
+  "All in one AI office": a local-first, single-user 3D office where autonomous
+  agent workers run real terminal sessions through CLI coding harnesses.
+
+  Hard constraints:
+  - TypeScript/JavaScript only. React for all UI. Keep it minimalist and reusable.
+  - Vendor-neutral by design. Core domain code MUST NOT reference any specific
+    harness or model vendor. Vendors plug in behind ports/adapters.
+  - MVP targets the PI harness and DeepSeek models only, but every vendor-specific
+    fact lives behind the adapter contracts so more can be added without changing core.
+  - Specs describe observable behavior, not class/function names or library choices.
+  - Prefer the smallest thing that can be run and verified end to end.
+
+  Engineering rules this project is held to live in docs/engineering-guidelines.md
+  and AGENTS.md. The load-bearing ones for planning:
+  - Functions stay small and shallow: decision points <= 12, length <= 95 lines,
+    nesting <= 3, file <= 600 lines. Enforced by test/code-health.test.ts.
+  - Anything important must be testable without a browser, network, clock, or
+    credentials. If it is not, the design is wrong and the plan must change it.
+  - Dependency direction is enforced: contracts <- core <- adapters <-
+    apps/runtime, and apps/web -> contracts only. No vendor names in core,
+    contracts, or web.
+
+# Per-artifact rules
+rules:
+  proposal:
+    - Name the capability path each new behavior lands in, and say what is out of scope.
+    - State whether the change alters observable behavior or is a refactor; if it is a
+      refactor with no behavior change, set skip_specs instead of inventing a requirement.
+    - Call out any new external dependency or new secret the change introduces.
+
+  design:
+    - Give a decision with rationale for every new external dependency, and name the
+      alternative that was rejected.
+    - Name the seam that makes the change verifiable without a network, browser,
+      clock, or credentials (which port is injected, which fake is used).
+    - State which architecture invariant the change touches and why it still holds.
+    - Keep the design at approach level; per-function detail belongs in the code.
+
+  tasks:
+    - Every task states how it is verified (a test, a command, or an observable result).
+    - Land tests and docs in the same group as the work that needs them; never open a
+      trailing test-only or docs-only group.
+    - Keep each task completable in one session, and order groups by dependency.
+    - Include the spec-validation and archive step as the final task.
+
+# Per-operation guidance
+operations:
+  apply:
+    guidance:
+      - Before editing code, read the spec requirement the task implements.
+      - Keep new functions inside the complexity budgets as you write them, not after.
+      - Tick a task's checkbox only once its stated verification passes.
+      - If implementing reveals a spec conflict or a wrong assumption, stop and fix the
+        spec in the same change rather than silently diverging.
+      - Summarize test results concisely; do not paste whole suites.
+
+  archive:
+    guidance:
+      - Confirm `openspec validate <change> --strict` is clean first.
+      - Summarize what the change established in the baseline specs, and list anything
+        deliberately deferred.

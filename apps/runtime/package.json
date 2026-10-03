@@ -1,0 +1,26 @@
+{
+  "name": "@ai-office/runtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "types": "./src/index.ts",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "tsx src/main.ts"
+  },
+  "dependencies": {
+    "@ai-office/adapter-fake": "*",
+    "@ai-office/adapter-pi": "*",
+    "@ai-office/adapter-session": "*",
+    "@ai-office/adapter-store-file": "*",
+    "@ai-office/contracts": "*",
+    "@ai-office/core": "*",
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.23.15"
+  }
+}

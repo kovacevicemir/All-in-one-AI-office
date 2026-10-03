@@ -1,0 +1,11 @@
+{
+  "$comment": "Maps a semantic bot identity to a model asset and named animation clips. Keys may be an agent id, an agent role, or 'default'. Omit `model` to use the built-in procedural bot. Required clips: idle, working, blocked. Optional: thinking, waiting, error, done, complaining, stressed.",
+  "default": {
+    "clips": {
+      "idle": "idle",
+      "working": "working",
+      "blocked": "blocked"
+    }
+  },
+  "bots": {}
+}

@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.ai-office/
+*.tsbuildinfo
+*.log
+.DS_Store
+
+# Local secrets. Ship .env.example, never .env.
+.env
+.env.local
+.env.*.local

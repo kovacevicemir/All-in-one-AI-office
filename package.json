@@ -1,0 +1,33 @@
+{
+  "name": "ai-office",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.6"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n runtime,web -c blue,magenta \"npm:dev:runtime\" \"npm:dev:web\"",
+    "dev:runtime": "npm run dev -w @ai-office/runtime",
+    "dev:web": "npm run dev -w @ai-office/web",
+    "typecheck": "tsc --noEmit",
+    "build": "npm run build --workspaces --if-present",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "e2e": "playwright test",
+    "start": "npm run start -w @ai-office/runtime"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^26.6.4",
+    "@types/ws": "^8.18.2",
+    "concurrently": "^10.0.5",
+    "tsx": "^4.20.6",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
+  }
+}
