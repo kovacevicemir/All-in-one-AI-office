@@ -91,10 +91,15 @@ async function openOffice(page: Page): Promise<{ canvas: ReturnType<Page['locato
   await expect(canvas).toBeVisible();
   // The real scene must be rendering, not the no-WebGL fallback.
   await expect(page.getByText(/no WebGL/)).toHaveCount(0);
+  // The layout styles arrive with the app bundle; wait until the floor canvas
+  // has its real size before projecting world points onto it.
+  await expect
+    .poll(async () => (await canvas.boundingBox())?.height ?? 0)
+    .toBeGreaterThan(300);
   const box = await canvas.boundingBox();
   expect(box).not.toBeNull();
   // Let the scene mount and the first frames settle before projecting onto it.
-  await page.waitForTimeout(2000);
+  await page.waitForTimeout(1000);
   return { canvas, box: box as Box };
 }
 
