@@ -113,6 +113,99 @@ async function readPose(page: Page, agentId: string): Promise<StoredPose | null>
   }, agentId);
 }
 
+interface StoredItem {
+  id: string;
+  kind: string;
+  x: number;
+  y: number;
+  rotation: number;
+}
+
+/** The working layout, from browser storage. */
+async function readLayout(page: Page): Promise<StoredItem[]> {
+  return page.evaluate(() => {
+    const raw = localStorage.getItem('ai-office.layout.v1');
+    if (raw === null) return [];
+    return (JSON.parse(raw) as { items: StoredItem[] }).items;
+  });
+}
+
+test('renders the default plan and places furniture by clicking the floor', async ({ page, request }) => {
+  await seedOffice(request, ['Ada', 'Grace']);
+  const { canvas } = await openOffice(page);
+  await page.getByRole('button', { name: 'Edit layout' }).click();
+
+  // The default layout is the same furnished plan a fresh office shows.
+  await expect.poll(async () => (await readLayout(page)).length).toBe(21);
+
+  await page.getByRole('button', { name: 'Chair', exact: true }).click();
+  // Wait for the selection to commit (and the placement plane to mount).
+  await expect(page.getByRole('button', { name: 'Place Chair' })).toBeVisible();
+
+  // Opening the editor and clicking the catalogue can scroll the page, so read
+  // the canvas box again before projecting a world point onto it.
+  const box = await canvas.boundingBox();
+  expect(box).not.toBeNull();
+  const spot = projectToClient([-4.5, 0, 4], box as Box);
+  await page.mouse.move(spot.x, spot.y);
+  await page.mouse.down();
+  await page.mouse.up();
+
+  await expect.poll(async () => (await readLayout(page)).length).toBe(22);
+  const added = (await readLayout(page)).find((item) => item.id === 'chair_1');
+  expect(added?.kind).toBe('chair');
+});
+
+test('drags furniture in edit mode and keeps furniture and agents independent', async ({
+  page,
+  request,
+}) => {
+  const [ada] = await seedOffice(request, ['Ada']);
+  const { canvas } = await openOffice(page);
+  await page.getByRole('button', { name: 'Edit layout' }).click();
+
+  const box = await canvas.boundingBox();
+  expect(box).not.toBeNull();
+  const activeBox = box as Box;
+
+  const stool = (await readLayout(page)).find((item) => item.id === 'stool_1');
+  expect(stool).toBeTruthy();
+  const poseBefore = await readPose(page, ada!);
+
+  const start = projectToClient([stool!.x, 0.5, stool!.y], activeBox);
+  await page.mouse.move(activeBox.x + 5, activeBox.y + 5);
+  await page.mouse.move(start.x, start.y);
+  await page.waitForTimeout(150);
+  await page.mouse.down();
+  for (let step = 1; step <= 12; step += 1) {
+    await page.mouse.move(start.x - (120 * step) / 12, start.y - (40 * step) / 12);
+  }
+  await page.mouse.up();
+
+  await expect
+    .poll(async () => (await readLayout(page)).find((item) => item.id === 'stool_1')?.x)
+    .not.toBeCloseTo(stool!.x, 2);
+  // Dragging furniture never moves an agent.
+  expect(await readPose(page, ada!)).toEqual(poseBefore);
+
+  // Leave edit mode; dragging an agent must leave the furniture alone.
+  await page.getByRole('button', { name: 'Done editing' }).click();
+  const furnitureAfter = await readLayout(page);
+  const viewBox = (await canvas.boundingBox()) as Box;
+  const agentPoint = projectToClient([poseBefore!.x, 0.85, poseBefore!.y], viewBox);
+  await page.mouse.move(viewBox.x + 5, viewBox.y + 5);
+  await page.mouse.move(agentPoint.x, agentPoint.y);
+  await page.waitForTimeout(150);
+  await page.mouse.down();
+  for (let step = 1; step <= 12; step += 1) {
+    await page.mouse.move(agentPoint.x + (110 * step) / 12, agentPoint.y);
+  }
+  await page.mouse.up();
+
+  await expect.poll(() => readPose(page, ada!)).not.toEqual(poseBefore);
+  expect(await readLayout(page)).toEqual(furnitureAfter);
+});
+
 test('drags an agent around the isometric floor and keeps it facing the move', async ({
   page,
   request,
@@ -177,4 +270,44 @@ test('shows a dashed floor link with a hover summary between two agents', async 
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.wheel(0, 400);
   await expect(canvas).toBeVisible();
+});
+
+test('previews a placement under the pointer', async ({ page, request }) => {
+  await seedOffice(request, ['Ada']);
+  const { canvas } = await openOffice(page);
+  await page.getByRole('button', { name: 'Edit layout' }).click();
+  await page.getByRole('button', { name: 'Chair', exact: true }).click();
+
+  // Re-read the canvas box: opening the editor can scroll the page.
+  const box = (await canvas.boundingBox()) as Box;
+  const spot = projectToClient([-4.5, 0, 4], box);
+  await page.mouse.move(spot.x, spot.y);
+
+  await expect(page.getByTestId('layout-preview')).toContainText('Placing Chair · 0°');
+  await expect(page.getByTestId('layout-preview')).toContainText('at ');
+});
+
+test('right-click removes a placed item without touching the rest', async ({ page, request }) => {
+  await seedOffice(request, ['Ada']);
+  const { canvas } = await openOffice(page);
+  await page.getByRole('button', { name: 'Edit layout' }).click();
+
+  const before = await readLayout(page);
+  const stool = before.find((item) => item.id === 'stool_1');
+  expect(stool).toBeTruthy();
+
+  const box = (await canvas.boundingBox()) as Box;
+  const point = projectToClient([stool!.x, 0.5, stool!.y], box);
+  await page.mouse.move(point.x, point.y);
+  await page.mouse.click(point.x, point.y, { button: 'right' });
+
+  await expect
+    .poll(async () => (await readLayout(page)).some((item) => item.id === 'stool_1'))
+    .toBe(false);
+
+  const after = await readLayout(page);
+  for (const item of before) {
+    if (item.id === 'stool_1') continue;
+    expect(after.find((candidate) => candidate.id === item.id)).toEqual(item);
+  }
 });

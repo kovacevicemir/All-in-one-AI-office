@@ -8,8 +8,21 @@ import { AgentRail } from './AgentRail.js';
 import { CommunicationLinks } from './CommunicationLinks.js';
 import { communicationSegments, type Vec3 } from './communication-links.js';
 import { resolveAvatar, type AvatarManifest } from './manifest.js';
-import { planOffice } from './floorplan.js';
+import { placementFromItem, type FurnitureKind } from './floorplan.js';
+import { layoutAgents } from './layout.js';
 import { Furniture } from './furniture.js';
+import { GhostFurniture } from './GhostFurniture.js';
+import { LayoutEditor } from './LayoutEditor.js';
+import type { LayoutDocument, LayoutItem } from './layout-document.js';
+import {
+  applyImport,
+  browserLayoutFile,
+  exportLayout,
+  importLayout,
+  type ImportStatus,
+  type LayoutFilePort,
+} from './layout-file.js';
+import { useOfficeLayout } from './use-office-layout.js';
 import { departmentNameFor } from './identity.js';
 import { visualForAgent } from './visuals.js';
 import type { AgentPose, PoseMap, RoomBounds } from './placement.js';
@@ -30,6 +43,8 @@ export interface OfficeViewProps {
   /** Rendered instead of the canvas when the office cannot be shown. */
   listFallback: React.ReactNode;
   onToggleView(): void;
+  /** Injected in tests; defaults to the browser download/upload port. */
+  layoutFile?: LayoutFilePort;
 }
 
 interface HoveredMarker {
@@ -45,9 +60,22 @@ interface RoomProps {
   selectedAgentId: string | null;
   poses: PoseMap;
   centerX: number;
+  roomWidth: number;
+  roomDepth: number;
   manifest: AvatarManifest;
+  layout: LayoutDocument;
+  editing: boolean;
+  pendingKind: FurnitureKind | null;
+  pendingRotation: number;
+  preview: { x: number; y: number } | null;
+  selectedItemId: string | null;
   onSelect(agentId: string): void;
   onMovePose(agentId: string, x: number, y: number): void;
+  onPlace(x: number, y: number): void;
+  onPreview(point: { x: number; y: number } | null): void;
+  onSelectItem(id: string): void;
+  onRemoveItem(id: string): void;
+  onMoveItem(id: string, x: number, y: number): void;
   onHover(communication: AgentCommunication, clientX: number, clientY: number): void;
   onLeave(): void;
 }
@@ -55,7 +83,8 @@ interface RoomProps {
 /**
  * The floor itself, inside the canvas. A drag is raycast against the floor plane
  * from window-level pointer events, so it continues after the pointer leaves the
- * bot and the pan/zoom controls never see a left-button drag.
+ * bot and the pan/zoom controls never see a left-button drag. Furniture drags
+ * start from an item and are only possible in edit mode; agent drags always work.
  */
 function Room({
   agents,
@@ -64,9 +93,22 @@ function Room({
   selectedAgentId,
   poses,
   centerX,
+  roomWidth,
+  roomDepth,
   manifest,
+  layout,
+  editing,
+  pendingKind,
+  pendingRotation,
+  preview,
+  selectedItemId,
   onSelect,
   onMovePose,
+  onPlace,
+  onPreview,
+  onSelectItem,
+  onRemoveItem,
+  onMoveItem,
   onHover,
   onLeave,
 }: RoomProps) {
@@ -75,13 +117,14 @@ function Room({
   const pointer = useMemo(() => new Vector2(), []);
   const floor = useMemo(() => new Plane(new Vector3(0, 1, 0), 0), []);
   const hit = useMemo(() => new Vector3(), []);
-  // The pointer keeps the grab offset from the bot's centre, so picking a bot up
-  // never teleports it and a plain click does not move it at all.
+  // The pointer keeps the grab offset from the object's centre, so picking
+  // something up never teleports it and a plain click does not move it at all.
   const dragInfo = useRef<{ grabX: number; grabY: number } | null>(null);
   const dragCleanup = useRef<(() => void) | null>(null);
-  const moveRef = useRef(onMovePose);
-  moveRef.current = onMovePose;
-  const { placed, furniture, zones } = planOffice(agents, departments);
+  const moveAgentRef = useRef(onMovePose);
+  moveAgentRef.current = onMovePose;
+  const moveItemRef = useRef(onMoveItem);
+  moveItemRef.current = onMoveItem;
 
   const pointFromClient = (
     clientX: number,
@@ -107,18 +150,20 @@ function Room({
 
   // Listeners attach synchronously on pointer down (not from an effect), so no
   // first move is lost while React schedules a render. They live on the window
-  // so the drag survives leaving the bot's small hitbox.
-  const startDrag = (agentId: string, pose: AgentPose, clientX: number, clientY: number) => {
-    const point = pointFromClient(clientX, clientY);
-    if (point === null) return;
+  // so the drag survives leaving the small hitbox.
+  const beginFloorDrag = (
+    point: { x: number; y: number },
+    grab: { grabX: number; grabY: number },
+    apply: (x: number, y: number) => void,
+  ) => {
     endDrag();
-    dragInfo.current = { grabX: pose.x - point.x, grabY: pose.y - point.y };
+    dragInfo.current = grab;
     const handleMove = (event: PointerEvent) => {
-      const grab = dragInfo.current;
-      if (grab === null) return;
+      const active = dragInfo.current;
+      if (active === null) return;
       const next = pointFromClient(event.clientX, event.clientY);
       if (next === null) return;
-      moveRef.current(agentId, next.x + grab.grabX, next.y + grab.grabY);
+      apply(next.x + active.grabX, next.y + active.grabY);
     };
     window.addEventListener('pointermove', handleMove);
     window.addEventListener('pointerup', endDrag);
@@ -126,6 +171,22 @@ function Room({
       window.removeEventListener('pointermove', handleMove);
       window.removeEventListener('pointerup', endDrag);
     };
+  };
+
+  const startAgentDrag = (agentId: string, pose: AgentPose, clientX: number, clientY: number) => {
+    const point = pointFromClient(clientX, clientY);
+    if (point === null) return;
+    beginFloorDrag(point, { grabX: pose.x - point.x, grabY: pose.y - point.y }, (x, y) =>
+      moveAgentRef.current(agentId, x, y),
+    );
+  };
+
+  const startItemDrag = (item: LayoutItem, clientX: number, clientY: number) => {
+    const point = pointFromClient(clientX, clientY);
+    if (point === null) return;
+    beginFloorDrag(point, { grabX: item.x - point.x, grabY: item.y - point.y }, (x, y) =>
+      moveItemRef.current(item.id, x, y),
+    );
   };
 
   useEffect(() => endDrag, []);
@@ -136,6 +197,8 @@ function Room({
     if (pose !== undefined) anchors[agent.id] = [pose.x, 0.95, pose.y];
   }
   const segments = communicationSegments(communications, anchors);
+  const { placed, zones } = layoutAgents(agents, departments);
+  const selected = layout.items.find((item) => item.id === selectedItemId) ?? null;
 
   return (
     <group>
@@ -155,7 +218,7 @@ function Room({
             facing={pose.facing}
             onSelect={() => onSelect(agent.id)}
             onDragStart={(event) =>
-              startDrag(agent.id, pose, event.nativeEvent.clientX, event.nativeEvent.clientY)
+              startAgentDrag(agent.id, pose, event.nativeEvent.clientX, event.nativeEvent.clientY)
             }
           />
         );
@@ -182,9 +245,65 @@ function Room({
           <meshStandardMaterial color="#e6d8bf" roughness={1} />
         </mesh>
       ))}
-      {furniture.map((placement, index) => (
-        <Furniture key={`${placement.kind}-${index}`} placement={placement} />
+
+      {layout.items.map((item) => (
+        <group
+          key={item.id}
+          onPointerDown={(event) => {
+            if (!editing || event.nativeEvent.button !== 0) return;
+            event.stopPropagation();
+            onSelectItem(item.id);
+            startItemDrag(item, event.nativeEvent.clientX, event.nativeEvent.clientY);
+          }}
+          onContextMenu={(event) => {
+            if (!editing) return;
+            event.stopPropagation();
+            event.nativeEvent.preventDefault();
+            onRemoveItem(item.id);
+          }}
+        >
+          <Furniture placement={placementFromItem(item)} />
+        </group>
       ))}
+
+      {editing && pendingKind !== null && preview !== null ? (
+        <GhostFurniture
+          placement={placementFromItem({
+            kind: pendingKind,
+            x: preview.x,
+            y: preview.y,
+            rotation: pendingRotation,
+          })}
+        />
+      ) : null}
+
+      {editing && selected !== null ? (
+        <mesh position={[selected.x, 0.02, selected.y]} rotation={[-Math.PI / 2, 0, 0]}>
+          <ringGeometry args={[0.45, 0.62, 32]} />
+          <meshBasicMaterial color="#38bdf8" />
+        </mesh>
+      ) : null}
+
+      {/* An invisible box catches a click on the floor while a kind is pending,
+          so pointer placement uses the same raycast as dragging. */}
+      {editing && pendingKind !== null ? (
+        <mesh
+          position={[centerX, 0, 0]}
+          onPointerMove={(event) => {
+            const point = pointFromClient(event.nativeEvent.clientX, event.nativeEvent.clientY);
+            if (point !== null) onPreview(point);
+          }}
+          onPointerOut={() => onPreview(null)}
+          onPointerDown={(event) => {
+            event.stopPropagation();
+            const point = pointFromClient(event.nativeEvent.clientX, event.nativeEvent.clientY);
+            if (point !== null) onPlace(point.x, point.y);
+          }}
+        >
+          <boxGeometry args={[roomWidth, 0.06, roomDepth]} />
+          <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+        </mesh>
+      ) : null}
 
       <Controls centerX={centerX} />
     </group>
@@ -213,7 +332,10 @@ function RoomShell({ width, depth, centerX }: { width: number; depth: number; ce
   const wallColor = '#eef2f6';
   return (
     <group>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+      <mesh
+        rotation={[-Math.PI / 2, 0, 0]}
+        receiveShadow
+      >
         <planeGeometry args={[width, depth]} />
         <meshStandardMaterial color="#d9c4a3" roughness={1} />
       </mesh>
@@ -238,7 +360,8 @@ function RoomShell({ width, depth, centerX }: { width: number; depth: number; ce
 /**
  * The office: an isometric 2.5D view of a flat floor. Bots keep their `x`/`y`
  * floor position and 360° facing, and can be dragged; communication between two
- * agents is drawn as a dashed link with an envelope at its midpoint.
+ * agents is drawn as a dashed link with an envelope at its midpoint. The floor
+ * plan comes from an editable layout document, so furniture is data now.
  */
 export function OfficeView({
   agents,
@@ -254,9 +377,21 @@ export function OfficeView({
   webglAvailable,
   listFallback,
   onToggleView,
+  layoutFile,
 }: OfficeViewProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [hovered, setHovered] = useState<HoveredMarker | null>(null);
+  const { document: layout, bounds: layoutBounds, dispatch, reset } = useOfficeLayout(
+    agents,
+    departments,
+  );
+  const filePort = useMemo(() => layoutFile ?? browserLayoutFile(), [layoutFile]);
+  const [editing, setEditing] = useState(false);
+  const [pendingKind, setPendingKind] = useState<FurnitureKind | null>(null);
+  const [pendingRotation, setPendingRotation] = useState(0);
+  const [preview, setPreview] = useState<{ x: number; y: number } | null>(null);
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [layoutStatus, setLayoutStatus] = useState<ImportStatus | null>(null);
 
   const centerX = (bounds.minX + bounds.maxX) / 2;
   const roomWidth = Math.max(12, bounds.maxX - bounds.minX + 4);
@@ -271,6 +406,84 @@ export function OfficeView({
     [centerX],
   );
 
+  const toggleEditing = (): void => {
+    const next = !editing;
+    setEditing(next);
+    if (!next) {
+      setPendingKind(null);
+      setPendingRotation(0);
+      setPreview(null);
+      setSelectedItemId(null);
+    }
+  };
+
+  const selectKind = (kind: FurnitureKind): void => {
+    setPendingKind(kind);
+    setPendingRotation(0);
+    setPreview(null);
+    setSelectedItemId(null);
+  };
+
+  const selectItem = (id: string): void => {
+    setSelectedItemId(id);
+    setPendingKind(null);
+    setPreview(null);
+  };
+
+  const placeAt = (x: number, y: number): void => {
+    if (pendingKind === null) return;
+    dispatch({ type: 'add', kind: pendingKind, x, y, rotation: pendingRotation });
+  };
+
+  const placeSelected = (): void => {
+    if (pendingKind === null) return;
+    dispatch({
+      type: 'add',
+      kind: pendingKind,
+      x: (layoutBounds.minX + layoutBounds.maxX) / 2,
+      y: (layoutBounds.minY + layoutBounds.maxY) / 2,
+      rotation: pendingRotation,
+    });
+  };
+
+  const moveLayoutItem = (id: string, x: number, y: number): void => {
+    dispatch({ type: 'move', id, x, y });
+  };
+
+  const removeLayoutItem = (id: string): void => {
+    dispatch({ type: 'remove', id });
+    setSelectedItemId((current) => (current === id ? null : current));
+  };
+
+  const rotateLayoutItem = (): void => {
+    if (selectedItemId !== null) {
+      dispatch({ type: 'rotate', id: selectedItemId });
+      return;
+    }
+    setPendingRotation((value) => (value + 1) % 4);
+  };
+
+  const resetLayout = (): void => {
+    reset();
+    setSelectedItemId(null);
+    setLayoutStatus({ tone: 'info', text: 'Layout reset to the default office.' });
+  };
+
+  const exportLayoutFile = (): void => {
+    exportLayout(filePort, layout);
+    setLayoutStatus({ tone: 'info', text: 'Layout exported.' });
+  };
+
+  const importLayoutFile = async (): Promise<void> => {
+    const outcome = await importLayout(filePort, layoutBounds);
+    const applied = applyImport(layout, outcome);
+    if (applied.document !== layout) {
+      dispatch({ type: 'replace', document: applied.document });
+      setSelectedItemId(null);
+    }
+    setLayoutStatus(applied.status);
+  };
+
   return (
     <section className="office-view" aria-label="Office">
       <header className="subheader">
@@ -281,7 +494,13 @@ export function OfficeView({
       </header>
 
       {webglAvailable ? (
-        <div className="canvas-wrap" ref={wrapRef}>
+        <div
+          className="canvas-wrap"
+          ref={wrapRef}
+          onContextMenu={(event) => {
+            if (editing) event.preventDefault();
+          }}
+        >
           <Canvas orthographic shadows={false} camera={camera} dpr={[1, 2]}>
             <color attach="background" args={['#dbe7f2']} />
             <hemisphereLight intensity={1.15} groundColor="#cbd5e1" />
@@ -295,9 +514,22 @@ export function OfficeView({
               selectedAgentId={selectedAgentId}
               poses={poses}
               centerX={centerX}
+              roomWidth={roomWidth}
+              roomDepth={roomDepth}
               manifest={manifest}
+              layout={layout}
+              editing={editing}
+              pendingKind={pendingKind}
+              pendingRotation={pendingRotation}
+              preview={preview}
+              selectedItemId={selectedItemId}
               onSelect={onSelect}
               onMovePose={onMovePose}
+              onPlace={placeAt}
+              onPreview={setPreview}
+              onSelectItem={selectItem}
+              onRemoveItem={removeLayoutItem}
+              onMoveItem={moveLayoutItem}
               onHover={(communication, clientX, clientY) => {
                 const rect = wrapRef.current?.getBoundingClientRect();
                 setHovered({
@@ -330,6 +562,27 @@ export function OfficeView({
           list view below shows the same information.
         </div>
       )}
+
+      <LayoutEditor
+        document={layout}
+        editing={editing}
+        pendingKind={pendingKind}
+        pendingRotation={pendingRotation}
+        preview={preview}
+        selectedItemId={selectedItemId}
+        status={layoutStatus}
+        onToggleEditing={toggleEditing}
+        onSelectKind={selectKind}
+        onPlaceSelected={placeSelected}
+        onSelectItem={selectItem}
+        onRotate={rotateLayoutItem}
+        onRemove={() => {
+          if (selectedItemId !== null) removeLayoutItem(selectedItemId);
+        }}
+        onReset={resetLayout}
+        onExport={exportLayoutFile}
+        onImport={() => void importLayoutFile()}
+      />
 
       <AgentRail agents={agents} selectedAgentId={selectedAgentId} onSelect={onSelect} />
 

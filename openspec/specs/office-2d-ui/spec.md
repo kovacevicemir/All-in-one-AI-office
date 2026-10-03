@@ -440,3 +440,132 @@ the agent's saved values when the agent is selected.
 
 - **WHEN** the user selects a different agent
 - **THEN** the editor shows that agent's saved description and instructions
+
+### Requirement: Editable floor plan
+
+The office SHALL let the user add furniture from a catalogue of the existing items, move
+a placed item by dragging it on the floor, rotate it in 90° steps through all four
+orientations (0°, 90°, 180° and 270°), and remove it. While a catalogue kind is selected,
+the office SHALL show a translucent preview of that item following the pointer on the
+floor, at the position and orientation it will be placed with, and SHALL expose the
+pending item and its orientation outside the scene. In edit mode, a right-click on a
+placed item SHALL remove it without a browser context menu. Every catalogue item SHALL
+reuse an existing procedural model; the change SHALL NOT introduce a new model or asset.
+Furniture editing SHALL NOT move agents, and moving an agent SHALL NOT move furniture.
+Editing SHALL be available only while the office is shown.
+
+#### Scenario: Add furniture with a preview
+
+- **WHEN** the user picks a kind from the catalogue and moves the pointer over the floor
+- **THEN** a translucent preview of that item follows the pointer at the position it
+  would be placed, and clicking the floor places the item there
+
+#### Scenario: Preview shows the placement orientation
+
+- **WHEN** the user rotates the pending item before placing it
+- **THEN** the preview shows that orientation and the placed item keeps it
+
+#### Scenario: Move furniture
+
+- **WHEN** the user drags a placed item on the floor
+- **THEN** that item's position follows the pointer and no agent and no other item moves
+
+#### Scenario: Rotate through four orientations
+
+- **WHEN** the user rotates a placed item
+- **THEN** its rotation advances by a quarter turn through 0°, 90°, 180° and 270°, and
+  the rest of the layout is unchanged
+
+#### Scenario: Remove with the Remove control
+
+- **WHEN** the user selects a placed item and chooses Remove
+- **THEN** the item disappears and the rest of the layout is unchanged
+
+#### Scenario: Remove with a right-click
+
+- **WHEN** the user right-clicks a placed item in edit mode
+- **THEN** that item is removed, no browser context menu is shown, and no other item or
+  agent moves
+
+#### Scenario: Reused models only
+
+- **WHEN** the catalogue is shown
+- **THEN** every entry is one of the existing furniture kinds, with no new model,
+  texture, or external asset
+
+#### Scenario: Furniture and agents stay independent
+
+- **WHEN** the user drags an agent, or drags a piece of furniture
+- **THEN** the other kind of object is unaffected
+
+### Requirement: Default office layout
+
+The office SHALL ship a default layout derived by a pure function from the existing
+furnished plan, used whenever no layout has been saved. The user SHALL be able to reset
+the office to that default in one action.
+
+#### Scenario: First run shows the default
+
+- **WHEN** the office is opened with no saved layout
+- **THEN** the default furnished plan is shown and becomes the starting layout
+
+#### Scenario: Reset restores the default
+
+- **WHEN** the user resets the layout after editing
+- **THEN** the default furnished plan is restored and the edits are discarded
+
+#### Scenario: Default is not duplicated by hand
+
+- **WHEN** the default layout is produced
+- **THEN** it comes from the same pure plan that furnishes a fresh office, so the two
+  cannot drift
+
+### Requirement: Layout persistence
+
+The working layout SHALL be retained when the user switches between the office and the
+list view and when the page is reloaded. A missing or unreadable saved layout SHALL fall
+back to the default instead of failing to render.
+
+#### Scenario: Edits survive a reload
+
+- **WHEN** the user edits the layout and reloads the page
+- **THEN** the edited layout is shown again
+
+#### Scenario: Edits survive a view switch
+
+- **WHEN** the user edits the layout, switches to the list view, and returns
+- **THEN** the edited layout is still shown
+
+#### Scenario: Damaged stored data degrades
+
+- **WHEN** the stored layout is missing or cannot be parsed
+- **THEN** the office shows the default layout and keeps working
+
+### Requirement: Layout import and export
+
+The user SHALL be able to export the current layout to a JSON file and import a layout
+from a JSON file. The document SHALL be versioned, and an exported layout SHALL
+round-trip through import to the same arrangement. Import SHALL validate the document
+before applying it: an invalid, unreadable, or unsupported-version file SHALL be reported
+with a specific reason and SHALL leave the current layout untouched.
+
+#### Scenario: Export then import round-trips
+
+- **WHEN** the user exports the layout and imports that file into an empty office
+- **THEN** the office shows the same items in the same positions and rotations
+
+#### Scenario: Invalid file is rejected safely
+
+- **WHEN** the user imports a file that is not a valid layout document
+- **THEN** an error explaining why is shown and the current layout is unchanged
+
+#### Scenario: Unsupported version is reported
+
+- **WHEN** the imported document declares a version this build does not support
+- **THEN** the import is refused with that reason rather than guessed at
+
+#### Scenario: Unknown items are disclosed
+
+- **WHEN** a valid document contains an item kind this build does not know
+- **THEN** the unknown items are skipped, the rest are imported, and the user is told how
+  many were skipped

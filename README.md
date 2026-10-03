@@ -67,6 +67,7 @@ the model are pluggable ports, so swapping vendors never touches the domain or t
 | 🔗 **Dependencies + parallelism** | Tasks can depend on tasks across agents; independent work runs concurrently, dependents unblock automatically. |
 | 🧩 **Vendor-neutral** | Adding a harness or model is one adapter package plus one registry line — never a core, API, or UI change. |
 | 🪄 **Replaceable bots** | Point `avatars/manifest.json` at a glTF; with no assets, a built-in procedural bot renders. |
+| ✏️ **Editable floor plan** | Add, move, rotate and remove furniture with the existing models; the arrangement is saved in the browser and can be exported/imported as JSON. |
 | ♿ **Accessible list view** | The same information without WebGL, fully keyboard-navigable. This is also how CI verifies the UI. |
 
 Stack: **TypeScript 7** (strict, ESM) · **React 19 + Vite 8** · **Three.js** via
@@ -99,7 +100,10 @@ No PI and no API key? The scripted fake adapter runs the entire UI offline —
 ```bash
 npm run dev:web    # web only
 npm start          # runtime only, no watch
-npm test           # unit + integration + architecture + code-health gates
+npm test           # every test group, timed and budget-checked (< 30s each)
+npm run test:changed # only the groups your working-tree changes can reach
+npm run test:group -- core   # one group
+npm run test:list  # groups and the budget
 npm run typecheck  # tsc --noEmit, whole repo
 npm run e2e        # Playwright browser suite (fake adapter)
 npm run build      # production build of the web app
@@ -224,6 +228,52 @@ keyboard-focus a marker for the summary (`Ada → Grace`, the ask, the task, the
 the time). All three render from one pure `describeCommunication`, so they can never
 disagree.
 
+## 🏗 Editing the office layout
+
+The furnished office is the **default** layout. In the office view, **Edit layout**
+opens a catalogue and a list of everything already placed:
+
+- **Add with a preview** — pick a kind in the catalogue (seating, desks, tech, decor,
+  plants, shared). A translucent preview of the item follows the pointer on the floor,
+  showing exactly where and how it will land; click the floor to place it, or press
+  **Place** to drop it in the middle. Every kind reuses an existing procedural model; no
+  new asset is authored.
+- **Rotate before placing** — **Rotate 90°** spins the pending item through 0°, 90°,
+  180° and 270° before you place it, and the preview shows the chosen orientation.
+- **Move** — drag a piece on the floor. Furniture only moves in edit mode, so dragging a
+  bot never shifts a desk and moving a desk never shifts a bot.
+- **Rotate / Remove** — select an item in the list (or click it), then use **Rotate 90°**
+  (all four orientations) or **Remove**.
+- **Right-click to remove** — in edit mode, right-clicking a placed item removes it
+  immediately, with no selection step. The browser context menu is suppressed.
+- **Reset to default** — discard every edit and restore the furnished plan.
+- **Export / Import** — save the arrangement to a JSON file and load one back.
+
+Everything above is keyboard-reachable: you never need a pointer to add, remove, or
+reset. The layout is saved in the browser, so it survives a reload and a switch between
+the office and the list view. An imported file is validated first: an invalid,
+unreadable, or unsupported-version file is reported and the current layout is left
+alone, and unknown item kinds are skipped with a count rather than failing the import.
+
+### Layout file format
+
+The exported file is a small, versioned document. Coordinates are floor positions in the
+same space as agent poses, and `rotation` is a quarter-turn index (`0`–`3`):
+
+```json
+{
+  "version": 1,
+  "items": [
+    { "id": "desk_1", "kind": "desk", "x": -1.7, "y": -2.65, "rotation": 0 },
+    { "id": "plant_1", "kind": "plant", "x": 3.4, "y": 1.8, "rotation": 1 }
+  ]
+}
+```
+
+`kind` is one of the existing furniture kinds. A piece's height is a property of its
+kind, so the file only needs `x`/`y`. The `version` lets a future format change be
+detected rather than silently misread.
+
 ## 🛠 Development
 
 The rules are written down and mostly enforced: see
@@ -232,6 +282,11 @@ The rules are written down and mostly enforced: see
 `test/code-health.test.ts` (file length, nesting depth, no `any`, every workspace ships
 tests) and `test/architecture.test.ts` (dependency direction, no vendor names in shared
 layers). Exceptions are documented and shrink-only.
+
+Tests are split into named groups (`scripts/test-groups.ts`). Each group must finish in
+under 30 seconds and no timeout may exceed 40 seconds; the `npm test` runner times every
+group and fails an overrun. While implementing, run `npm run test:changed` (or one group
+with `npm run test:group -- <name>`); run `npm test` before considering the work done.
 
 Behaviour changes start as a spec change:
 
